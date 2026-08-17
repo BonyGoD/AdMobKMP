@@ -1,0 +1,76 @@
+# Gradle files
+.gradle/
+build/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Log/OS Files
+*.log
+
+# Android Studio generated files and folders
+captures/
+.externalNativeBuild/
+.cxx/
+*.aab
+*.apk
+output-metadata.json
+
+# IntelliJ
+*.iml
+.idea/
+misc.xml
+deploymentTargetDropDown.xml
+render.experimental.xml
+
+# Keystore files
+*.jks
+*.keystore
+
+# Google Services (e.g. APIs o Firebase)
+google-services.json
+GoogleService-Info.plist
+
+# Android Profiling
+*.hprof
+
+# Kotlin metadata
+.kotlin/
+*.kotlin_metadata
+kotlinTransformedMetadataLibraries/
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# App de ejemplo iOS
+iosApp/Pods/
+iosApp/Podfile.lock
+iosApp/*.xcworkspace
+iosApp/DerivedData/
+iosApp/build/
+iosApp/*.dSYM.zip
+iosApp/*.ipa
+
+# Configuración sensible iOS
+iosApp/GoogleService-Info.plist
+iosApp/Config.plist
+iosApp/Configuration/Config.xcconfig
+
+# Certificados y provisioning
+iosApp/*.p12
+iosApp/*.mobileprovision
+iosApp/*.cer
+iosApp/*.certSigningRequest
+
+# Graphify (artefactos generados, no son código fuente)
+graphify-out/
+
+# Archivos temporales macOS
+.DS_Store
+**/.DS_Store

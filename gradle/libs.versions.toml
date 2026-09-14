@@ -1,9 +1,11 @@
 [versions]
 agp = "9.2.1"
+# 36 a propósito, igual que CrashlyticsKMP: compileSdk fija el minCompileSdk del AAR, el suelo
+# que se le impone a quien consuma la librería. Con 37 quedarían fuera los proyectos con AGP 8.x,
+# cuyo máximo es 36. Por eso la 1.0.1 falló en JitPack: lifecycle-runtime-compose 2.11 exigía 37,
+# y ni siquiera se usaba. Antes de añadir una dependencia androidx, mirar qué compileSdk pide.
 android-compileSdk = "36"
 android-minSdk = "24"
-androidx-activity = "1.13.0"
-androidx-lifecycle = "2.11.0"
 composeMultiplatform = "1.11.1"
 kotlin = "2.4.10"
 kotlinxCoroutines = "1.10.2"
@@ -14,8 +16,6 @@ playServicesAds = "25.4.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
-androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
-androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 
 #AdMob

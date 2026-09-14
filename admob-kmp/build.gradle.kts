@@ -46,8 +46,6 @@ kotlin {
                 implementation(compose.material3)
                 implementation(compose.ui)
 
-                implementation(libs.androidx.lifecycle.runtimeCompose)
-
                 // ShowPreloadedInterstitial usa kotlinx.coroutines.delay en
                 // androidMain e iosMain. Se declara explícita porque hoy llega
                 // transitiva vía compose.runtime, y eso es frágil: no debe
@@ -64,8 +62,6 @@ kotlin {
 
         val androidMain by getting {
             dependencies {
-                implementation(libs.androidx.activity.compose)
-
                 // AdMob — api y no implementation: quien consuma la librería
                 // necesita el SDK de AdMob en su classpath.
                 api(libs.play.services.ads)
@@ -116,4 +112,4 @@ android {
 
 // Información para publicación en JitPack
 group = "com.github.BonyGoD"
-version = "1.0.1"
+version = "1.0.2"

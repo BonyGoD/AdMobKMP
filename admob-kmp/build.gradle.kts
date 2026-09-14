@@ -112,4 +112,4 @@ android {
 
 // Información para publicación en JitPack
 group = "com.github.BonyGoD"
-version = "1.0.2"
+version = "1.0.0"

@@ -1,0 +1,140 @@
+name: Release on version bump
+
+# Cada vez que `version` cambia en admob-kmp/build.gradle.kts y eso llega a main, se
+# crea el tag y el release, y se lanza la build en JitPack. Es el mismo workflow que
+# ListaCompra con tres diferencias, las tres a proposito:
+#
+#   - El tag va SIN `v`. JitPack usa el nombre del tag como version: con `v1.0.1` la
+#     coordenada seria `admob-kmp:v1.0.1` y ningun `libs.versions.toml` con "1.0.1" la
+#     encontraria. SignInKMP y CrashlyticsKMP tambien van sin `v`.
+#   - Se compara contra `github.event.before` (lo que habia en main antes del push) y no
+#     contra HEAD^. Con un fast-forward de varios commits, si la version se subio en uno
+#     que no es el ultimo, HEAD^ ya la trae y el bump pasaria desapercibido.
+#   - Al terminar se pide la build a JitPack. JitPack no construye al ver el tag: espera a
+#     que alguien pida la version, y ese alguien seria la primera sincronizacion de Gradle
+#     de la app, que se comeria los minutos de espera y un posible error sin contexto.
+
+on:
+  push:
+    branches:
+      - main
+  # Vista previa: no crea tag ni release, solo deja las notas en el resumen del job.
+  # GitHub solo enseña el boton "Run workflow" si este fichero esta en la rama por defecto.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Leer version actual y anterior
+        id: version
+        run: |
+          leer() { grep -E '^version[[:space:]]*=' | head -1 | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/'; }
+
+          ACTUAL=$(leer < admob-kmp/build.gradle.kts)
+
+          # En el primer push de una rama `before` viene a ceros; ahi el unico referente
+          # posible es el padre.
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE="HEAD^"
+          fi
+          ANTERIOR=$(git show "$BEFORE:admob-kmp/build.gradle.kts" 2>/dev/null | leer || true)
+
+          echo "actual=$ACTUAL" >> "$GITHUB_OUTPUT"
+          echo "anterior=$ANTERIOR" >> "$GITHUB_OUTPUT"
+          echo "📦 ${ANTERIOR:-(ninguna)} → $ACTUAL"
+
+          if [ -z "$ACTUAL" ]; then
+            echo "❌ No se pudo leer version de admob-kmp/build.gradle.kts"
+            exit 1
+          fi
+
+      - name: Decidir si hay release
+        id: decision
+        run: |
+          ACTUAL="${{ steps.version.outputs.actual }}"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "👀 Vista previa manual: no se creara release ni tag"
+            echo "publicar=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$ACTUAL" = "${{ steps.version.outputs.anterior }}" ]; then
+            echo "ℹ️  La version no ha cambiado, no hay release"
+            echo "publicar=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Si el tag ya existe se ha publicado a mano (como la 1.0.0). Volver a crearlo
+          # fallaria, y moverlo romperia a quien ya lo haya descargado de JitPack.
+          if git rev-parse -q --verify "refs/tags/$ACTUAL" >/dev/null; then
+            echo "⚠️  El tag $ACTUAL ya existe; no se toca"
+            echo "publicar=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "✅ Nueva version: $ACTUAL"
+          echo "publicar=true" >> "$GITHUB_OUTPUT"
+
+      - name: Generar notas
+        if: steps.decision.outputs.publicar == 'true'
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.actual }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 .github/scripts/release_notes.py > notas.md
+          cat notas.md
+          { echo "## Notas de la $NEW_VERSION"; echo; cat notas.md; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Crear tag y release
+        if: steps.decision.outputs.publicar == 'true' && github.event_name != 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.actual }}
+          name: ${{ steps.version.outputs.actual }}
+          body_path: notas.md
+          target_commitish: ${{ github.sha }}
+
+      - name: Lanzar la build en JitPack
+        if: steps.decision.outputs.publicar == 'true' && github.event_name != 'workflow_dispatch'
+        run: |
+          V="${{ steps.version.outputs.actual }}"
+          API="https://jitpack.io/api/builds/com.github.${{ github.repository_owner }}/${{ github.event.repository.name }}"
+
+          # Pedir el log es lo que dispara la build.
+          curl -s --max-time 60 "https://jitpack.io/com/github/${{ github.repository }}/$V/build.log" -o /dev/null || true
+
+          # La API responde {"com.github.<owner>": {"<repo>": {"1.0.0": "ok", ...}}}.
+          ESTADO=""
+          for i in $(seq 1 30); do
+            ESTADO=$(curl -s --max-time 25 "$API" | python3 -c '
+          import json, os, sys
+          owner = next(iter(json.load(sys.stdin).values()))
+          print(next(iter(owner.values())).get(os.environ["V"], ""))
+          ' 2>/dev/null || true)
+            if [ "$ESTADO" = "ok" ] || [ "$ESTADO" = "Error" ]; then
+              break
+            fi
+            sleep 30
+          done
+
+          echo "JitPack $V: ${ESTADO:-sin terminar tras 15 min}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # Un Error si tumba el job: es la señal de que la version publicada no se puede
+          # consumir. Quedarse sin terminar no, que JitPack a veces va lento sin mas.
+          if [ "$ESTADO" = "Error" ]; then
+            curl -s "https://jitpack.io/com/github/${{ github.repository }}/$V/build.log" | tail -60
+            exit 1
+          fi
+        env:
+          V: ${{ steps.version.outputs.actual }}

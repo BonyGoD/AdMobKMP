@@ -16,15 +16,18 @@ kotlin {
         }
     }
 
+    // Sin iosX64, el simulador de los Mac Intel: Compose Multiplatform 1.11 y lifecycle
+    // 2.11 ya no publican artefactos para esa plataforma, y con el target declarado
+    // Gradle no resuelve compose.runtime. Asi fallo la build de la 1.0.0 en JitPack.
+    // ListaCompra lo quito por lo mismo (PLAN-ONBOARDING-SIN-REGISTRO, seccion 11).
     val iosTargets = listOf(
         iosArm64(),
-        iosSimulatorArm64(),
-        iosX64()
+        iosSimulatorArm64()
     )
 
     // El framework solo se configura en macOS: enlazarlo requiere la toolchain de
     // Apple. En Linux (JitPack) los targets siguen declarados —de ahí salen los
-    // tres klibs que consume el lado iOS— pero no se intenta el enlazado.
+    // dos klibs que consume el lado iOS— pero no se intenta el enlazado.
     if (System.getProperty("os.name").contains("Mac", ignoreCase = true)) {
         iosTargets.forEach { target ->
             target.binaries.framework {
@@ -113,4 +116,4 @@ android {
 
 // Información para publicación en JitPack
 group = "com.github.BonyGoD"
-version = "1.0.0"
+version = "1.0.1"

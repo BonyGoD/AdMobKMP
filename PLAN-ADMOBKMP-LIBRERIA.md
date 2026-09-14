@@ -302,7 +302,7 @@ notificación, escribir `Package.swift`.
 
 ### Fase 6 — Publicar
 
-> **14 sep 2026:** el tag `1.0.0` se publicó y **falló en JitPack** por `iosX64` (ver §6). La primera versión consumible es la `1.0.1`, y la publica ya el workflow `.github/workflows/release.yml` al subir `version` en `main`.
+> **14 sep 2026:** el tag `1.0.0` se publicó y **falló en JitPack** por `iosX64` (ver §6), y la `1.0.1` también: `lifecycle-runtime-compose` 2.11 exigía compilar contra la API 37, y ni siquiera se usaba. Se quitó y la librería sigue en compileSdk 36. La primera versión consumible es la `1.0.2`, y la publica ya el workflow `.github/workflows/release.yml` al subir `version` en `main`.
 
 Tag `1.0.0`, forzar el build en jitpack.io, y **verificar que aparecen los tres
 klibs de iOS** en el artefacto, no solo el AAR. Si faltan, el consumo desde iOS
@@ -312,7 +312,7 @@ seguir.
 ### Fase 7 — Migrar ListaCompra
 
 **Rama en ListaCompra:** `feature/admob-libreria`, desde `develop`.
-**Requisito:** la fase 6 cerrada — tag `1.0.1` publicado y los dos klibs de iOS
+**Requisito:** la fase 6 cerrada — tag `1.0.2` publicado y los dos klibs de iOS
 servidos por JitPack. El código puede escribirse antes leyendo la API de este repo,
 pero **no se compila hasta que la versión esté publicada**.
 
@@ -339,7 +339,7 @@ Inventario verificado contra `develop` de ListaCompra el 14 sep 2026.
 
 #### 7.2 Dependencia
 
-- `gradle/libs.versions.toml`: `admob-kmp = "1.0.1"` y
+- `gradle/libs.versions.toml`: `admob-kmp = "1.0.2"` y
   `bonygod-admobkmp = { module = "com.github.BonyGoD.AdMobKMP:admob-kmp", version.ref = "admob-kmp" }`,
   junto a `bonygod-signinkmp` y `bonygod-crashlyticskmp`.
 - `composeApp/build.gradle.kts`: `implementation(libs.bonygod.admobkmp)` en `commonMain`.
@@ -398,7 +398,7 @@ cablear la navegación.
   proyecto rompe el build de iOS; en ese caso lo quita BonyGoD desde Xcode.
 - **`project.pbxproj` no se edita a mano.** El cambio de paquete local a remoto lo hace
   BonyGoD en Xcode: quitar `AdMobKMPSwift` de Package Dependencies y añadir
-  `https://github.com/BonyGoD/AdMobKMP`, versión `1.0.1`, producto `AdMobKMPSwift`.
+  `https://github.com/BonyGoD/AdMobKMP`, versión `1.0.2`, producto `AdMobKMPSwift`.
 
 #### 7.7 Lo que no se toca
 

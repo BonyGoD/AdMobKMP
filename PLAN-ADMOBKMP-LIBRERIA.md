@@ -216,7 +216,7 @@ que el artefacto sirva):
 - `id("maven-publish")` en el módulo.
 - `androidTarget { publishLibraryVariants("release") }`.
 - `android { publishing { singleVariant("release") { withSourcesJar(); withJavadocJar() } } }`.
-- Los tres targets iOS declarados: `iosArm64()`, `iosSimulatorArm64()`, `iosX64()`.
+- Dos targets iOS declarados: `iosArm64()` e `iosSimulatorArm64()`. **Sin `iosX64()`**: Compose Multiplatform 1.11 ya no lo publica, y con él declarado la build de la 1.0.0 falló en JitPack.
 - **`api(...)` y no `implementation(...)`** para `play-services-ads` en
   `androidMain`: si no, quien consuma la librería no tendrá el SDK de AdMob en el
   classpath. SignInKMP usa `api` para todas sus dependencias Android por esto
@@ -301,22 +301,120 @@ Fusionar `AdPreloader.swift` dentro del paquete, extraer las constantes de
 notificación, escribir `Package.swift`.
 
 ### Fase 6 — Publicar
+
+> **14 sep 2026:** el tag `1.0.0` se publicó y **falló en JitPack** por `iosX64` (ver §6). La primera versión consumible es la `1.0.1`, y la publica ya el workflow `.github/workflows/release.yml` al subir `version` en `main`.
+
 Tag `1.0.0`, forzar el build en jitpack.io, y **verificar que aparecen los tres
 klibs de iOS** en el artefacto, no solo el AAR. Si faltan, el consumo desde iOS
 fallará al enlazar y hay que revisar la versión de Kotlin y los targets antes de
 seguir.
 
 ### Fase 7 — Migrar ListaCompra
-- Borrar `composeApp/src/*/ads/`, los `ShowPreloadedInterstitial*` y
-  `AdLoadingScreen.kt`.
-- Borrar `iosApp/iosApp/AdPreloader.swift` y el paquete local `AdMobKMPSwift/`.
-- Sustituir `XCLocalSwiftPackageReference` por `XCRemoteSwiftPackageReference`.
-- Añadir la dependencia Gradle y llamar a `AdMobKMP.configure(...)` en
-  `ListaCompraApp.onCreate()` y en `iOSApp.swift`, alimentándola desde el
-  `BuildConfig` que ya existe.
-- El banner de `HomeContent.kt:163` pasa a la versión de la librería.
-- El intersticial se queda desactivado (`interstitialEnabled = false`), que es la
-  decisión de `PLAN-ONBOARDING-SIN-REGISTRO.md` §Fase 2.
+
+**Rama en ListaCompra:** `feature/admob-libreria`, desde `develop`.
+**Requisito:** la fase 6 cerrada — tag `1.0.1` publicado y los dos klibs de iOS
+servidos por JitPack. El código puede escribirse antes leyendo la API de este repo,
+pero **no se compila hasta que la versión esté publicada**.
+
+Inventario verificado contra `develop` de ListaCompra el 14 sep 2026.
+
+#### 7.1 Lo que se borra
+
+| Fichero | Qué es |
+|---|---|
+| `composeApp/src/commonMain/.../ads/AdConstants.kt` | IDs y el interruptor del intersticial |
+| `composeApp/src/commonMain/.../ads/README.md` | documentación de la versión local |
+| `composeApp/src/commonMain/.../ads/ui/AdComponents.kt` | `expect` del banner y del intersticial |
+| `composeApp/src/androidMain/.../ads/AdConstants.android.kt` | |
+| `composeApp/src/androidMain/.../ads/AdMobInitializer.kt` | init del SDK en Android |
+| `composeApp/src/androidMain/.../ads/InterstitialAdManager.kt` | precarga del intersticial |
+| `composeApp/src/androidMain/.../ads/ui/AdComponents.android.kt` | |
+| `composeApp/src/iosMain/.../ads/AdConstants.ios.kt` | |
+| `composeApp/src/iosMain/.../ads/InterstitialAdPreloader.kt` | puente que usa `iOSApp.swift` |
+| `composeApp/src/iosMain/.../ads/ui/AdComponents.ios.kt` | |
+| `composeApp/src/commonMain/.../login/ui/screens/AdLoadingScreen.kt` | |
+| `composeApp/src/*/login/ui/screens/ShowPreloadedInterstitial*.kt` | los tres, `expect` y dos `actual` |
+| `iosApp/iosApp/AdPreloader.swift` | precarga en Swift |
+| `AdMobKMPSwift/` en la raíz de ListaCompra | el paquete Swift local; lo sustituye el remoto |
+
+#### 7.2 Dependencia
+
+- `gradle/libs.versions.toml`: `admob-kmp = "1.0.1"` y
+  `bonygod-admobkmp = { module = "com.github.BonyGoD.AdMobKMP:admob-kmp", version.ref = "admob-kmp" }`,
+  junto a `bonygod-signinkmp` y `bonygod-crashlyticskmp`.
+- `composeApp/build.gradle.kts`: `implementation(libs.bonygod.admobkmp)` en `commonMain`.
+- **Mirar en `admob-kmp/build.gradle.kts` de este repo si `play-services-ads` va como
+  `api` o como `implementation`.** Con `implementation` la app tiene que conservar su
+  propia dependencia; con `api`, sobra. Es el riesgo de §11, y se decide antes de quitarla.
+
+#### 7.3 Configuración
+
+- `AdMobKMP.configure(AdMobConfig(...))` alimentado desde los `buildConfigField` que ya
+  existen (`ADMOB_ANDROID_BANNER`, `ADMOB_IOS_BANNER`...).
+- **Replicar exactamente la regla actual de `AdConstants`** para decidir entre IDs de prueba
+  y de producción. Leerla antes; no inventar una nueva al pasar a `useTestAds`.
+- `interstitialEnabled = false`, la decisión de `PLAN-ONBOARDING-SIN-REGISTRO.md` §Fase 2.
+- **Una sola llamada**, en código común que corra en las dos plataformas antes de la
+  primera pantalla —donde arranca Koin, por ejemplo—. El borrador de esta fase decía
+  "en `ListaCompraApp.onCreate()` y en `iOSApp.swift`", que son dos sitios que mantener
+  sincronizados. Si no hay un punto común limpio, se propone antes de escribirlo.
+- Revisar `InitializeAds.android.kt` / `.ios.kt`: si la librería inicializa el SDK, sustituye
+  a `AdMobInitializer.initialize(...)`.
+
+#### 7.4 Banner
+
+`HomeContent.kt` (hacia la línea 189 en `develop`) pasa de
+`BannerAd(adUnitId = AdConstants.getBannerAdUnitId(), ...)` a `BannerAd(modifier = ...)`, sin ID.
+
+**En iOS el banner local pintaba el contenedor con `SecondaryBlue`**, y la `BannerAd` de la
+librería no tiene parámetro de color. Si se pierde el fondo, **no se parchea en la app**: se
+anota como cambio pendiente aquí, en la librería.
+
+#### 7.5 Intersticial y la ruta `AdLoading`
+
+El borrador mandaba borrar `AdLoadingScreen.kt`, pero `AuthViewModel` navega a
+`Routes.AdLoading(uid)` en tres sitios y `NavigationWrapper` pinta esa pantalla en la ruta.
+Borrarla sin más deja la ruta sin nada que mostrar.
+
+**Decisión:** la ruta se queda y pinta el `InterstitialAdScreen` de la librería:
+
+```kotlin
+entry<Routes.AdLoading> { entry ->
+    InterstitialAdScreen(onFinished = { navigator.clearAndNavigateTo(Routes.Home(userId)) })
+}
+```
+
+Con `interstitialEnabled = false` llama a `onFinished` de inmediato (criterio 5 de §12), así
+que el login no cambia. Y reactivar el intersticial pasa a ser un booleano, no volver a
+cablear la navegación.
+
+#### 7.6 iOS
+
+- `iOSApp.swift`: quitar la precarga (`InterstitialAdPreloader` + `AdPreloader.shared.preloadAd`).
+  `MobileAds.shared.start()` y `_ = AdMobCallbackHelper.shared` se quedan **solo si
+  `AdMobKMPSwift` no lo hace ya**.
+- **Antes de borrar `AdPreloader.swift`, buscarlo en `project.pbxproj`.** Si el grupo lleva
+  referencias explícitas y no es una carpeta sincronizada, borrar el fichero sin quitarlo del
+  proyecto rompe el build de iOS; en ese caso lo quita BonyGoD desde Xcode.
+- **`project.pbxproj` no se edita a mano.** El cambio de paquete local a remoto lo hace
+  BonyGoD en Xcode: quitar `AdMobKMPSwift` de Package Dependencies y añadir
+  `https://github.com/BonyGoD/AdMobKMP`, versión `1.0.1`, producto `AdMobKMPSwift`.
+
+#### 7.7 Lo que no se toca
+
+- El `meta-data` `com.google.android.gms.ads.APPLICATION_ID` del manifiesto y el
+  `GADApplicationIdentifier` del `Info.plist`: son de la app, la librería no puede saberlos.
+- Las reglas de ProGuard de anuncios de la app, salvo que la librería traiga `consumer-rules`
+  equivalentes.
+- `feature/ads_kmp_funcionando`, la rama vieja de pruebas con logs: obsoleta, no se mezcla.
+
+#### 7.8 Comprobación de la fase
+
+1. `grep -r "listacompra.ads" composeApp` no devuelve nada.
+2. Ni `AdMobKMPSwift/` ni `AdPreloader.swift` quedan en ListaCompra.
+3. El banner de Home carga en Android y en iOS: de prueba en debug, reales en release.
+4. Login → Home igual que hoy, sin pantalla intermedia visible y sin ninguna petición de
+   intersticial en el log.
 
 ## 11. Riesgos
 
@@ -337,7 +435,7 @@ seguir.
 
 ## 12. Criterios de aceptación
 
-1. `./gradlew publishToMavenLocal` genera AAR + los tres klibs de iOS.
+1. `./gradlew publishToMavenLocal` genera AAR + los dos klibs de iOS (`iosarm64` e `iossimulatorarm64`).
 2. JitPack construye el tag y sirve `com.github.BonyGoD.AdMobKMP:admob-kmp:1.0.0`.
 3. Un proyecto KMP limpio muestra un banner con **una llamada a `BannerAd()`** tras
    un único `AdMobKMP.configure(...)`.
